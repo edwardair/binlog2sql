@@ -44,7 +44,7 @@ class Binlog2sql(object):
 
         self.binlogList = []
         self.connection = pymysql.connect(**self.conn_setting)
-        with self.connection as cursor:
+        with self.connection.cursor() as cursor:
             cursor.execute("SHOW MASTER STATUS")
             self.eof_file, self.eof_pos = cursor.fetchone()[:2]
             cursor.execute("SHOW MASTER LOGS")
@@ -62,16 +62,29 @@ class Binlog2sql(object):
                 raise ValueError('missing server_id in %s:%s' % (self.conn_setting['host'], self.conn_setting['port']))
 
     def process_binlog(self):
-        stream = BinLogStreamReader(connection_settings=self.conn_setting, server_id=self.server_id,
-                                    log_file=self.start_file, log_pos=self.start_pos, only_schemas=self.only_schemas,
-                                    only_tables=self.only_tables, resume_stream=True, blocking=True)
+        stream = BinLogStreamReader(connection_settings=self.conn_setting,
+                                    server_id=self.server_id,
+                                    log_file=self.start_file,
+                                    log_pos=self.start_pos,
+                                    only_schemas=self.only_schemas,
+                                    only_tables=self.only_tables,
+                                    resume_stream=True,
+                                    blocking=True
+                                    )
 
         flag_last_event = False
         e_start_pos, last_pos = stream.log_pos, stream.log_pos
         # to simplify code, we do not use flock for tmp_file.
         tmp_file = create_unique_file('%s.%s' % (self.conn_setting['host'], self.conn_setting['port']))
-        with temp_open(tmp_file, "w") as f_tmp, self.connection as cursor:
+        log_file = None
+        with temp_open(tmp_file, "w") as f_tmp, self.connection.cursor() as cursor:
             for binlog_event in stream:
+                if log_file != stream.log_file:
+                    log_file = stream.log_file
+                    print(f''
+                          f'==============================='
+                          f'\n{log_file}:\n'
+                          f'===============================')
                 if not self.stop_never:
                     try:
                         event_time = datetime.datetime.fromtimestamp(binlog_event.timestamp)
@@ -92,7 +105,7 @@ class Binlog2sql(object):
                         break
                     # else:
                     #     raise ValueError('unknown binlog file or position')
-
+                # print(f'{binlog_event=}')
                 if isinstance(binlog_event, QueryEvent) and binlog_event.query == 'BEGIN':
                     e_start_pos = last_pos
 
