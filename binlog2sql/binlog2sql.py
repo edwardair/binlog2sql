@@ -25,7 +25,7 @@ class Binlog2sql(object):
         self.conn_setting = connection_settings
         self.start_file = start_file
         self.start_pos = start_pos if start_pos else 4    # use binlog v4
-        self.end_file = end_file if end_file else start_file
+        self.end_file = end_file  # if end_file else start_file
         self.end_pos = end_pos
         if start_time:
             self.start_time = datetime.datetime.strptime(start_time, "%Y-%m-%d %H:%M:%S")
@@ -47,6 +47,8 @@ class Binlog2sql(object):
         with self.connection.cursor() as cursor:
             cursor.execute("SHOW MASTER STATUS")
             self.eof_file, self.eof_pos = cursor.fetchone()[:2]
+            if self.end_file is None or len(self.end_file) == 0:
+                self.end_file = self.eof_file
             cursor.execute("SHOW MASTER LOGS")
             bin_index = [row[0] for row in cursor.fetchall()]
             if self.start_file not in bin_index:
